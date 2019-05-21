@@ -37,6 +37,8 @@ export class EchoServer {
             http: true,
             redis: true
         },
+        events: [],
+        eventEndpoint: '',
         apiOriginAllow: {
             allowCors: false,
             allowOrigin: '',
@@ -207,7 +209,7 @@ export class EchoServer {
      */
     onUnsubscribe(socket: any): void {
         socket.on('unsubscribe', data => {
-            this.channel.leave(socket, data.channel, 'unsubscribed');
+            this.channel.leave(socket, data.channel, 'unsubscribed', data.auth);
         });
     }
 
@@ -218,7 +220,7 @@ export class EchoServer {
         socket.on('disconnecting', (reason) => {
             Object.keys(socket.rooms).forEach(room => {
                 if (room !== socket.id) {
-                    this.channel.leave(socket, room, reason);
+                    this.channel.leave(socket, room, reason, {});
                 }
             });
         });

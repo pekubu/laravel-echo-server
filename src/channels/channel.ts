@@ -1,6 +1,8 @@
-import { PresenceChannel } from './presence-channel';
-import { PrivateChannel } from './private-channel';
-import { Log } from './../log';
+import {PresenceChannel} from './presence-channel';
+import {PrivateChannel} from './private-channel';
+import {Log} from './../log';
+
+const request = require('request');
 
 export class Channel {
     /**
@@ -44,7 +46,7 @@ export class Channel {
                 this.joinPrivate(socket, data);
             } else {
                 socket.join(data.channel);
-                this.onJoin(socket, data.channel);
+                this.onJoin(socket, data.channel, data.auth);
             }
         }
     }
@@ -67,13 +69,14 @@ export class Channel {
     /**
      * Leave a channel.
      */
-    leave(socket: any, channel: string, reason: string): void {
+    leave(socket: any, channel: string, reason: string, auth: any): void {
         if (channel) {
             if (this.isPresence(channel)) {
                 this.presence.leave(socket, channel)
             }
 
             socket.leave(channel);
+            this.onLeave(socket, channel, auth);
 
             if (this.options.devMode) {
                 Log.info(`[${new Date().toLocaleTimeString()}] - ${socket.id} left channel: ${channel} (${reason})`);
@@ -106,12 +109,13 @@ export class Channel {
                 var member = res.channel_data;
                 try {
                     member = JSON.parse(res.channel_data);
-                } catch (e) { }
+                } catch (e) {
+                }
 
                 this.presence.join(socket, data.channel, member);
             }
 
-            this.onJoin(socket, data.channel);
+            this.onJoin(socket, data.channel, data.auth);
         }, error => {
             if (this.options.devMode) {
                 Log.error(error.reason);
@@ -132,9 +136,54 @@ export class Channel {
     /**
      * On join a channel log success.
      */
-    onJoin(socket: any, channel: string): void {
+    onJoin(socket: any, channel: string, auth: any): void {
         if (this.options.devMode) {
             Log.info(`[${new Date().toLocaleTimeString()}] - ${socket.id} joined channel: ${channel}`);
+        }
+        this.sendWebhook('left', socket, channel, auth);
+    }
+
+    /**
+     * On join a channel log success.
+     */
+    onLeave(socket: any, channel: string, auth: any): void {
+        if (this.options.devMode) {
+            Log.info(`[${new Date().toLocaleTimeString()}] - ${socket.id} leave channel: ${channel}`);
+        }
+        this.sendWebhook('join', socket, channel, auth);
+    }
+
+    /**
+     * Send webhook
+     */
+    sendWebhook(event: string, socket: any, channel: any, auth: any) {
+        if (this.options.eventEndpoint && this.options.events.find((e) => e === event)) {
+            let options = {
+                url: this.options.eventEndpoint,
+                form: {
+                    event: event,
+                    channel: channel,
+                    auth: auth,
+                }
+            };
+            request.post(options, (error, response, body, next) => {
+                if (error) {
+                    if (this.options.devMode) {
+                        Log.error(`[${new Date().toLocaleTimeString()}] - Error call ${event} hook ${socket.id} `);
+                    }
+
+                    Log.error(error);
+                } else if (response.statusCode !== 200) {
+                    if (this.options.devMode) {
+                        Log.warning(`[${new Date().toLocaleTimeString()}] - Error call ${event} hook ${socket.id} `);
+                        Log.error(response.body);
+                    }
+                } else {
+                    if (this.options.devMode) {
+                        Log.info(`[${new Date().toLocaleTimeString()}] - Call ${event} hook for ${socket.id}`);
+                    }
+                }
+            });
         }
     }
 
